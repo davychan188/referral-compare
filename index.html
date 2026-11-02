@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="utf-8">
+<title>Referral Cases 對比</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root{--g:#14532d;--bg:#f3f6f3;--line:#d5e0d5;--ok:#166534;--bad:#b91c1c;--warn:#b45309}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","PingFang HK","Microsoft JhengHei",sans-serif;background:var(--bg);color:#0f172a}
+header{background:var(--g);color:#fff;padding:16px 20px}
+header h1{margin:0;font-size:18px}
+header p{margin:4px 0 0;opacity:.85;font-size:13px}
+.wrap{max-width:1280px;margin:0 auto;padding:16px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+@media(max-width:800px){.grid{grid-template-columns:1fr}}
+.card{background:#fff;border-radius:14px;padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:14px;margin-top:4px;background:#f8faf8;font-size:12px;color:#475569;text-align:center;cursor:pointer;min-height:72px}
+.drop.over{border-color:var(--g);background:#ecfdf3}
+.drop .title{font-weight:700;font-size:13px;color:#0f172a;margin-bottom:4px}
+.drop .fname{font-size:12px;color:#64748b;margin-top:8px;word-break:break-all}
+.drop .fname.empty{color:#94a3b8}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;align-items:center}
+.btn{border:0;background:var(--g);color:#fff;font-weight:800;padding:10px 14px;border-radius:12px;cursor:pointer;font-size:14px}
+.btn:disabled{background:#94a3b8;cursor:not-allowed}
+.btn2{background:#e2e8f0;color:#334155}
+.btn-sm{border:0;background:var(--g);color:#fff;font-weight:700;padding:8px 12px;border-radius:10px;cursor:pointer;font-size:13px}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:12px 0}
+@media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:#fff;border-radius:12px;padding:12px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.kpi b{display:block;font-size:22px;color:var(--g)}
+.kpi span{font-size:12px;color:#64748b}
+.note{color:#64748b;font-size:13px}
+.hint{font-size:12px;color:#64748b;margin-top:4px}
+label.card-label{font-size:13px;font-weight:700;display:block;margin-bottom:6px}
+.field{margin:8px 0}
+.field input[type=text],.field input[type=date]{width:100%;max-width:220px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;font-size:13px}
+.opts{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.opt-group{font-size:13px}
+.opt-group label{display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-weight:500;cursor:pointer}
+.month-range{display:none;gap:8px;align-items:center;margin-top:6px}
+.month-range.show{display:flex;flex-wrap:wrap}
+h2{font-size:14px;margin:16px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px;color:#0f172a}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+.tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;font-size:13px;cursor:pointer;font-weight:600;color:#334155}
+.tab.active{background:var(--g);color:#fff;border-color:var(--g)}
+.table-wrap{overflow:auto;margin:8px 0 16px;background:#fff;border:1px solid var(--line);border-radius:10px;max-height:min(70vh,640px)}
+table.excel{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:12px;background:#fff}
+table.excel th,table.excel td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top;white-space:nowrap;background:#fff;color:#000}
+table.excel th{background:#ecf3ec;color:#0f172a;font-weight:700;position:sticky;top:0;z-index:2;box-shadow:0 1px 0 var(--line)}
+table.excel tbody tr:nth-child(even) td{background:#fafdfa}
+table.excel td.changed{background:#fff2cc;font-weight:600}
+table.excel tr.risk-open td{background:#fde8d0}
+table.excel tr.risk-done td{background:#e8f8ec}
+.badge{display:inline-block;min-width:1.6em;padding:1px 8px;border-radius:999px;background:#ecfdf3;color:var(--ok);font-weight:800;font-size:12px}
+.badge.warn{background:#fff7ed;color:var(--warn)}
+.badge.bad{background:#fef2f2;color:var(--bad)}
+footer{margin:24px 0 8px;text-align:center;color:#64748b;font-size:12px}
+.err{background:#fef2f2;color:#991b1b;border:1px solid #fecaca;padding:10px 12px;border-radius:10px;margin:8px 0;font-size:13px}
+.okmsg{background:#ecfdf3;color:#166534;border:1px solid #bbf7d0;padding:10px 12px;border-radius:10px;margin:8px 0;font-size:13px}
+details.block{background:#fff;border-radius:12px;padding:10px 12px;margin:10px 0;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+details.block summary{cursor:pointer;font-weight:700;font-size:13px;color:#0f172a}
+</style>
+</head>
+<body>
+<header>
+  <h1>Referral Cases 對比</h1>
+  <p>對比兩份 Housing Referral Excel（Case No. + Tree ID）。資料只在瀏覽器處理，不會上傳。</p>
+</header>
+<div class="wrap">
+  <div class="grid">
+    <div class="card">
+      <label class="card-label">A 公司 Excel</label>
+      <div class="drop" id="dropA" tabindex="0">
+        <div class="title">拖放或點擊選擇</div>
+        <div class="fname empty" id="nameA">尚未選擇</div>
+      </div>
+      <div class="field">
+        <label class="card-label" for="labelA">A 名稱</label>
+        <input type="text" id="labelA" value="A公司" placeholder="A公司">
+      </div>
+    </div>
+    <div class="card">
+      <label class="card-label">B 公司 Excel</label>
+      <div class="drop" id="dropB" tabindex="0">
+        <div class="title">拖放或點擊選擇</div>
+        <div class="fname empty" id="nameB">尚未選擇</div>
+      </div>
+      <div class="field">
+        <label class="card-label" for="labelB">B 名稱</label>
+        <input type="text" id="labelB" value="B公司" placeholder="B公司">
+      </div>
+    </div>
+  </div>
+  <input type="file" id="fileA" accept=".xlsx,.xls,.xlsm" hidden>
+  <input type="file" id="fileB" accept=".xlsx,.xls,.xlsm" hidden>
+
+  <div class="card">
+    <div class="opts">
+      <div class="opt-group">
+        <div class="card-label">對比時間範圍</div>
+        <label><input type="radio" name="scope" value="1"> 全部</label>
+        <label><input type="radio" name="scope" value="2" checked> 最近3個月</label>
+        <label><input type="radio" name="scope" value="3"> 自訂月份</label>
+        <div class="month-range" id="monthRange">
+          <input type="text" id="monthFrom" placeholder="開始 YYYYMM" maxlength="6" inputmode="numeric">
+          <span>至</span>
+          <input type="text" id="monthTo" placeholder="結束 YYYYMM" maxlength="6" inputmode="numeric">
+        </div>
+      </div>
+      <div class="opt-group field">
+        <label class="card-label" for="asOf">Audit 日期（as_of）</label>
+        <input type="text" id="asOf" placeholder="YYYYMMDD，留空＝今日" maxlength="8" inputmode="numeric">
+        <div class="hint">用於判斷已過 Case deadline 且未完成</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="btns">
+    <button class="btn" id="btnCompare" disabled>開始對比</button>
+    <button class="btn btn2" id="btnDownload" disabled>下載 Excel 報告</button>
+  </div>
+  <div id="status"></div>
+  <div id="out"></div>
+  <footer>資料只在瀏覽器處理 · 邏輯對應 compare_tree_cases.py</footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const HEADER_MAP = {
+    "source of referral": "Source of Referral",
+    "estate": "Estate",
+    "estate (eng)": "Estate",
+    "case no.": "Case No.",
+    "case no": "Case No.",
+    "case number": "Case No.",
+    "date received": "Date Received",
+    "date of referral request": "Date Received",
+    "tree id": "Tree ID",
+    "tree no.": "Tree ID",
+    "tree no": "Tree ID",
+    "observatrion": "Observation",
+    "observation": "Observation",
+    "case description": "Observation",
+    "mitigation": "Mitigation",
+    "recommendation": "Mitigation",
+    "case deadline*\n(normal case)": "Case deadline",
+    "case deadline* (normal case)": "Case deadline",
+    "case deadline": "Case deadline",
+    "anticipated completion date by ts": "Case deadline",
+    "works completion date": "Works Completion Date",
+    "actual completion date": "Works Completion Date",
+    "remarks": "Remarks",
+    "region": "Region",
+  };
+  const WORD_NORMALIZE = [
+    [/\bbranches\b/g, "branch"], [/\btwigs\b/g, "twig"], [/\bleaves\b/g, "leaf"],
+    [/\bfronds\b/g, "frond"], [/\bwounds\b/g, "wound"], [/\bcavities\b/g, "cavity"],
+    [/\broots\b/g, "root"], [/\btrees\b/g, "tree"], [/\bstubs\b/g, "stub"],
+    [/\bhangers\b/g, "hanger"],
+  ];
+  const TEXT_COLS = new Set(["Observation", "Mitigation", "Remarks", "Source of Referral", "Estate"]);
+  const COMPARE_COLS = ["Observation", "Mitigation", "Works Completion Date", "Date Received", "Case deadline"];
+  const RISK_WORDS = ["dead tree", "wilting", "wilted", "severe sparse foliage", "root plate movement", "fungal fruiting"];
+  const DISPLAY_COLS = ["Source of Referral", "Estate", "Case No.", "Date Received", "Tree ID", "Observation", "Mitigation", "Case deadline"];
+  const FILL_NEW = "E2EFDA", FILL_OVERDUE = "FCE4D6", FILL_DEAD = "F8CBAD", FILL_DELAYED = "DDEBF7";
+  const FILL_RISK = "F4B183", FILL_RISK_DONE = "C6EFCE", FILL_DIFF = "FFF2CC", FILL_HEADER = "1F4E79";
+
+  const dropA = document.getElementById("dropA");
+  const dropB = document.getElementById("dropB");
+  const fileA = document.getElementById("fileA");
+  const fileB = document.getElementById("fileB");
+  const nameA = document.getElementById("nameA");
+  const nameB = document.getElementById("nameB");
+  const btnCompare = document.getElementById("btnCompare");
+  const btnDownload = document.getElementById("btnDownload");
+  const out = document.getElementById("out");
+  const statusEl = document.getElementById("status");
+  const monthRange = document.getElementById("monthRange");
+
+  let bufA = null, bufB = null, lastResult = null;
+
+  function s(v) { return String(v ?? "").trim(); }
+  function esc(v) {
+    return s(v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  function badge(n, warnIfPositive) {
+    const cls = n > 0 ? (warnIfPositive === false ? "" : " warn") : "";
+    const bad = warnIfPositive && n > 0 ? " bad" : cls;
+    return `<span class="badge${n > 0 && warnIfPositive !== false ? (warnIfPositive ? " bad" : " warn") : ""}">${n}</span>`;
+  }
+  function badgeWarn(n) {
+    return `<span class="badge${n > 0 ? " warn" : ""}">${n}</span>`;
+  }
+  function badgeBad(n) {
+    return `<span class="badge${n > 0 ? " bad" : ""}">${n}</span>`;
+  }
+
+  function todayDate() {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  function ymd(d) {
+    if (!(d instanceof Date) || isNaN(d)) return "";
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+  function daysBetween(a, b) {
+    return Math.round((a - b) / 86400000);
+  }
+  function parseDateYMD(str) {
+    const m = /^(\d{4})(\d{2})(\d{2})$/.exec(s(str));
+    if (!m) return null;
+    const y = +m[1], mo = +m[2], d = +m[3];
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    return new Date(y, mo - 1, d);
+  }
+  function parseMonth(str, end) {
+    let t = s(str).replace(/[-/]/g, "");
+    if (!t) return null;
+    if (t.length === 6 && /^\d{6}$/.test(t)) {
+      const y = +t.slice(0, 4), m = +t.slice(4, 6);
+      if (m < 1 || m > 12) throw new Error("月份要 01-12：" + t);
+      if (!end) return new Date(y, m - 1, 1);
+      if (m === 12) return new Date(y, 11, 31);
+      return new Date(y, m, 0); // last day of month m
+    }
+    throw new Error("月份格式要 202607：" + t);
+  }
+
+  function excelSerialToDate(n) {
+    // Excel serial date (Windows 1900 system); SheetJS with cellDates may already give Date
+    // Serial 1 = 1899-12-31 in some libs; common: days since 1899-12-30
+    const epoch = Date.UTC(1899, 11, 30);
+    const ms = epoch + Math.round(n) * 86400000;
+    const d = new Date(ms);
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  }
+
+  function normHeader(h) {
+    if (h == null || h === "") return null;
+    let str = String(h).trim().toLowerCase().replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    const s2 = str.replace(/\n/g, " ").replace(/\s+/g, " ").trim();
+    if (HEADER_MAP[s2]) return HEADER_MAP[s2];
+    if (HEADER_MAP[str]) return HEADER_MAP[str];
+    if (s2.includes("case no")) return "Case No.";
+    if (s2.startsWith("tree id") || s2.startsWith("tree no")) return "Tree ID";
+    if (s2.includes("observ") || s2.includes("description")) return "Observation";
+    if (s2.includes("mitigation") || s2 === "recommendation") return "Mitigation";
+    if (s2.includes("completion date") && s2.includes("actual")) return "Works Completion Date";
+    if (s2.includes("anticipated completion") || s2.includes("deadline")) return "Case deadline";
+    if (s2.includes("referral request") || s2.includes("date received")) return "Date Received";
+    if (s2 === "estate") return "Estate";
+    if (s2.includes("remarks")) return "Remarks";
+    if (s2 === "region") return "Region";
+    return String(h).trim();
+  }
+
+  function isBlankish(v) {
+    if (v == null || v === "") return true;
+    const u = String(v).trim().toUpperCase();
+    return u === "N/A" || u === "NA" || u === "NONE" || u === "-";
+  }
+
+  function normVal(v) {
+    if (isBlankish(v)) return null;
+    if (v instanceof Date && !isNaN(v)) {
+      return new Date(v.getFullYear(), v.getMonth(), v.getDate());
+    }
+    if (typeof v === "number" && isFinite(v)) {
+      // Likely Excel serial if in typical date range
+      if (v > 20000 && v < 80000) return excelSerialToDate(v);
+      return v;
+    }
+    const str = String(v).trim();
+    const formats = [
+      /^(\d{4})-(\d{1,2})-(\d{1,2})$/,
+      /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/,
+      /^(\d{4})\/(\d{1,2})\/(\d{1,2})$/,
+      /^(\d{1,2})-(\d{1,2})-(\d{4})$/,
+    ];
+    // Y-m-d
+    let m = formats[0].exec(str);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+    // d/m/Y
+    m = formats[1].exec(str);
+    if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+    // Y/m/d
+    m = formats[2].exec(str);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+    // d-m-Y
+    m = formats[3].exec(str);
+    if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+    return str;
+  }
+
+  function normText(v) {
+    if (v == null) return null;
+    let t = String(v).trim().toLowerCase().replace(/&/g, " and ");
+    t = t.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+    for (const [pat, rep] of WORD_NORMALIZE) t = t.replace(pat, rep);
+    return t;
+  }
+
+  function valuesEqual(col, va, vb) {
+    if (va == null && vb == null) return true;
+    if (va == null || vb == null) return false;
+    const da = va instanceof Date, db = vb instanceof Date;
+    if (da && db) return Math.abs(daysBetween(va, vb)) <= 1;
+    if (da || db) return false; // Python: va==vb for mixed date/non-date rarely true
+    if (TEXT_COLS.has(col) || typeof va === "string" || typeof vb === "string") {
+      return normText(va) === normText(vb);
+    }
+    return va === vb;
+  }
+
+  function deadlineIsOneDayFromReceived(rec) {
+    const a = rec["Date Received"], b = rec["Case deadline"];
+    return (a instanceof Date) && (b instanceof Date) && Math.abs(daysBetween(b, a)) <= 1;
+  }
+  function isIncomplete(rec) {
+    return rec["Works Completion Date"] == null;
+  }
+  function isOverdueIncomplete(rec, asOf) {
+    if (!isIncomplete(rec) || deadlineIsOneDayFromReceived(rec)) return false;
+    const d = rec["Case deadline"];
+    if (!(d instanceof Date)) return false;
+    return d <= (asOf || todayDate());
+  }
+  function riskHits(rec) {
+    const obs = normText(rec["Observation"]) || "";
+    return RISK_WORDS.filter(w => obs.includes(w));
+  }
+  function followUpStatus(rec) {
+    const done = rec["Works Completion Date"];
+    const mit = normText(rec["Mitigation"]) || "";
+    const acted = ["removal", "remove", "fell", "felling", "tpc", "pruning", "prune", "done"].some(w => mit.includes(w));
+    return (done || acted) ? "已跟進" : "未跟進";
+  }
+  function isDeadTreeNotRemoval(rec) {
+    const obs = normText(rec["Observation"]) || "";
+    const mit = normText(rec["Mitigation"]) || "";
+    if (!obs.includes("dead tree")) return false;
+    return !["removal", "remove", "fell", "felling", "tpc", "non tpc", "nontpc"].some(w => mit.includes(w));
+  }
+  function isDelayedRemark(rec) {
+    const raw = String(rec["Remarks"] || "").toLowerCase();
+    return ["liaised with emo", "traffic obstruction", "attempt to carry out work", "延後"].some(k => raw.includes(k));
+  }
+  function makeKey(caseNo, treeId) {
+    const c = caseNo != null ? String(caseNo).trim() : "";
+    const t = treeId != null ? String(treeId).trim() : "";
+    return c + "\0" + t;
+  }
+  function splitKey(k) {
+    const i = k.indexOf("\0");
+    return [k.slice(0, i), k.slice(i + 1)];
+  }
+  function safeName(str) {
+    let t = String(str || "").replace(/[^A-Za-z0-9_]/g, "").slice(0, 12) || "X";
+    if (/^\d/.test(t)) t = "N" + t;
+    return t;
+  }
+  function fmtCell(v) {
+    if (v == null) return "";
+    if (v instanceof Date) return ymd(v);
+    return String(v);
+  }
+  function displayRow(rec, key) {
+    const [c, t] = key ? splitKey(key) : [rec["Case No."], rec["Tree ID"]];
+    return [
+      rec["Source of Referral"], rec["Estate"], c,
+      rec["Date Received"], t,
+      rec["Observation"], rec["Mitigation"], rec["Case deadline"],
+    ];
+  }
+
+  function sheetToRows(ws) {
+    // Prefer raw array with dates as Date when possible
+    return XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
+  }
+
+  function loadSheetFromRows(rows, dateFrom, dateTo, sheetName) {
+    let headers = null;
+    let headerIdx = -1;
+    const maxScan = Math.min(8, rows.length);
+    for (let i = 0; i < maxScan; i++) {
+      const row = rows[i] || [];
+      const cand = row.map(normHeader);
+      if (cand.includes("Case No.") && cand.includes("Tree ID")) {
+        headers = cand;
+        headerIdx = i;
+        break;
+      }
+    }
+    if (!headers) return {};
+    const ci = headers.indexOf("Case No.");
+    const ti = headers.indexOf("Tree ID");
+    const records = {};
+    for (let r = headerIdx + 1; r < rows.length; r++) {
+      const row = rows[r] || [];
+      let empty = true;
+      for (let i = 0; i < Math.min(8, row.length); i++) {
+        if (row[i] != null && String(row[i]).trim() !== "") { empty = false; break; }
+      }
+      if (empty) continue;
+      const key = makeKey(ci < row.length ? row[ci] : null, ti < row.length ? row[ti] : null);
+      if (key === "\0") continue;
+      const rec = {};
+      for (let i = 0; i < headers.length; i++) {
+        if (headers[i]) rec[headers[i]] = normVal(i < row.length ? row[i] : null);
+      }
+      const d = rec["Date Received"];
+      if (d instanceof Date) {
+        if (dateFrom && d < dateFrom) continue;
+        if (dateTo && d > dateTo) continue;
+      } else if (dateFrom || dateTo) {
+        continue;
+      }
+      records[key] = rec;
+    }
+    return records;
+  }
+
+  function loadAll(wb, dateFrom, dateTo) {
+    const outMap = {};
+    for (const name of wb.SheetNames) {
+      const ws = wb.Sheets[name];
+      const rows = sheetToRows(ws);
+      const recs = loadSheetFromRows(rows, dateFrom, dateTo, name);
+      if (!Object.keys(recs).length) continue;
+      if (name === "Summary") {
+        for (const [k, r] of Object.entries(recs)) {
+          const reg = r["Region"] != null ? String(r["Region"]) : "Summary";
+          if (!outMap[reg]) outMap[reg] = {};
+          outMap[reg][k] = r;
+        }
+      } else {
+        outMap[name] = recs;
+      }
+    }
+    return outMap;
+  }
+
+  function compareRec(a, b) {
+    const diffs = [];
+    for (const col of COMPARE_COLS) {
+      const va = a[col], vb = b[col];
+      if (vb == null) continue;
+      if (!valuesEqual(col, va, vb)) diffs.push([col, va, vb]);
+    }
+    return diffs;
+  }
+
+  function sortDisplayRows(rows, by, reverse) {
+    // by: "received" -> idx 3; "deadline" -> idx 7
+    const idx = by === "deadline" ? 7 : 3;
+    const sorted = rows.slice().sort((ra, rb) => {
+      const va = ra[idx], vb = rb[idx];
+      const da = va instanceof Date, db = vb instanceof Date;
+      if (da && db) {
+        const diff = va - vb;
+        if (diff !== 0) return reverse ? -diff : diff;
+      } else if (da && !db) return reverse ? 1 : -1;
+      else if (!da && db) return reverse ? -1 : 1;
+      else if (!da && !db) {
+        // both non-date: Python puts them after dates with (1,0,...)
+        // when reverse (newest first for received), non-dates stay after? Python reverse=True on (1,0,...) puts them first actually
+        // Keep stable: compare case then tree
+      }
+      const c = String(ra[2] || "").localeCompare(String(rb[2] || ""));
+      if (c !== 0) return c;
+      return String(ra[4] || "").localeCompare(String(rb[4] || ""));
+    });
+    // Match Python more carefully for date vs non-date:
+    // key: date -> (0, ordinal, case, tree); non-date -> (1, 0, case, tree)
+    // reverse=True means reverse that sort
+    return rows.slice().sort((ra, rb) => {
+      function key(r) {
+        const v = r[idx];
+        if (v instanceof Date) return [0, v.getTime(), String(r[2] || ""), String(r[4] || "")];
+        return [1, 0, String(r[2] || ""), String(r[4] || "")];
+      }
+      const ka = key(ra), kb = key(rb);
+      for (let i = 0; i < 4; i++) {
+        if (ka[i] < kb[i]) return reverse ? 1 : -1;
+        if (ka[i] > kb[i]) return reverse ? -1 : 1;
+      }
+      return 0;
+    });
+  }
+
+  function getScope() {
+    const choice = (document.querySelector('input[name="scope"]:checked') || {}).value || "2";
+    let d1 = null, d2 = null;
+    if (choice === "2") {
+      d2 = todayDate();
+      d1 = new Date(d2.getTime() - 90 * 86400000);
+    } else if (choice === "3") {
+      d1 = parseMonth(document.getElementById("monthFrom").value, false);
+      d2 = parseMonth(document.getElementById("monthTo").value, true);
+    }
+    return { choice, d1, d2 };
+  }
+
+  function getAsOf() {
+    const raw = s(document.getElementById("asOf").value);
+    if (!raw) return todayDate();
+    const d = parseDateYMD(raw);
+    if (!d) throw new Error("Audit 日期格式要 YYYYMMDD");
+    return d;
+  }
+
+  function updateButtons() {
+    btnCompare.disabled = !(bufA && bufB);
+  }
+
+  function wireDrop(dropEl, inputEl, which) {
+    dropEl.onclick = () => inputEl.click();
+    dropEl.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); inputEl.click(); } };
+    dropEl.ondragover = e => { e.preventDefault(); dropEl.classList.add("over"); };
+    dropEl.ondragleave = () => dropEl.classList.remove("over");
+    dropEl.ondrop = e => {
+      e.preventDefault();
+      dropEl.classList.remove("over");
+      if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0], which);
+    };
+    inputEl.onchange = () => { if (inputEl.files[0]) loadFile(inputEl.files[0], which); };
+  }
+
+  function loadFile(file, which) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      if (which === "A") {
+        bufA = e.target.result;
+        nameA.textContent = file.name;
+        nameA.classList.remove("empty");
+      } else {
+        bufB = e.target.result;
+        nameB.textContent = file.name;
+        nameB.classList.remove("empty");
+      }
+      lastResult = null;
+      btnDownload.disabled = true;
+      updateButtons();
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  wireDrop(dropA, fileA, "A");
+  wireDrop(dropB, fileB, "B");
+
+  document.querySelectorAll('input[name="scope"]').forEach(r => {
+    r.addEventListener("change", () => {
+      monthRange.classList.toggle("show", r.value === "3" && r.checked);
+      // also check current
+      const cur = document.querySelector('input[name="scope"]:checked');
+      monthRange.classList.toggle("show", cur && cur.value === "3");
+    });
+  });
+  // init
+  monthRange.classList.toggle("show", document.querySelector('input[name="scope"]:checked').value === "3");
+
+  function runCompare() {
+    statusEl.innerHTML = "";
+    out.innerHTML = "";
+    btnDownload.disabled = true;
+    lastResult = null;
+    try {
+      const name_a = s(document.getElementById("labelA").value) || "A公司";
+      const name_b = s(document.getElementById("labelB").value) || "B公司";
+      const { d1, d2 } = getScope();
+      const asOf = getAsOf();
+
+      const wbA = XLSX.read(bufA, { type: "array", cellDates: true });
+      const wbB = XLSX.read(bufB, { type: "array", cellDates: true });
+      const aMap = loadAll(wbA, d1, d2);
+      const bMap = loadAll(wbB, d1, d2);
+      if (!Object.keys(aMap).length && !Object.keys(bMap).length) {
+        throw new Error("兩邊都讀唔到 Case No./Tree ID。A=" + wbA.SheetNames.join(",") + " B=" + wbB.SheetNames.join(","));
+      }
+
+      const regions = [];
+      const seen = new Set();
+      for (const r of [...Object.keys(aMap), ...Object.keys(bMap)]) {
+        if (!seen.has(r)) { seen.add(r); regions.push(r); }
+      }
+
+      const loaded = {};
+      let allA = new Set(), allB = new Set();
+      for (const region of regions) {
+        const aRecs = aMap[region] || {};
+        const bRecs = bMap[region] || {};
+        const aSet = new Set(Object.keys(aRecs));
+        const bSet = new Set(Object.keys(bRecs));
+        const onlyA = [...aSet].filter(k => !bSet.has(k)).sort();
+        const onlyB = [...bSet].filter(k => !aSet.has(k)).sort();
+        const common = [...aSet].filter(k => bSet.has(k)).sort();
+        const contentDiff = [];
+        for (const k of common) {
+          const diffs = compareRec(aRecs[k], bRecs[k]);
+          if (diffs.length) contentDiff.push([k, diffs]);
+        }
+        for (const k of aSet) { const c = splitKey(k)[0]; if (c) allA.add(c); }
+        for (const k of bSet) { const c = splitKey(k)[0]; if (c) allB.add(c); }
+        loaded[region] = { aRecs, bRecs, onlyA, onlyB, contentDiff };
+      }
+
+      const per = {};
+      for (const region of regions) {
+        const d = loaded[region];
+        const { aRecs, bRecs } = d;
+        const neu = [], seenCase = new Set();
+        for (const key of d.onlyB) {
+          const caseNo = splitKey(key)[0];
+          if (caseNo && !allA.has(caseNo) && !seenCase.has(caseNo)) {
+            seenCase.add(caseNo);
+            neu.push(displayRow(bRecs[key], key));
+          }
+        }
+        const overdue = [], dead = [], delayed = [], risk = [];
+        const combined = [
+          ...Object.entries(bRecs),
+          ...d.onlyA.map(k => [k, aRecs[k]]),
+        ];
+        for (const [key, rec] of combined) {
+          const hits = riskHits(rec);
+          if (hits.length) {
+            risk.push(displayRow(rec, key).concat([hits.join(", "), followUpStatus(rec), rec["Works Completion Date"]]));
+          }
+          if (deadlineIsOneDayFromReceived(rec)) continue;
+          const row = displayRow(rec, key);
+          if (isOverdueIncomplete(rec, asOf)) overdue.push(row);
+          if (isDeadTreeNotRemoval(rec)) dead.push(row);
+          if (isDelayedRemark(rec)) delayed.push(row);
+        }
+        per[region] = { new: neu, overdue, dead, delayed, risk };
+      }
+
+      lastResult = {
+        name_a, name_b, d1, d2, asOf, regions, loaded, per,
+        na: safeName(name_a), nb: safeName(name_b),
+      };
+      btnDownload.disabled = false;
+      const scopeLabel = (d1 || d2) ? `${ymd(d1) || "不限"} 至 ${ymd(d2) || "不限"}` : "全部日期";
+      statusEl.innerHTML = `<div class="okmsg">對比完成：${esc(name_a)} vs ${esc(name_b)}　範圍 ${esc(scopeLabel)}　逾期以 ${esc(ymd(asOf))} 計　區域 ${regions.length}</div>`;
+      renderResult(lastResult);
+    } catch (err) {
+      console.error(err);
+      statusEl.innerHTML = `<div class="err">錯誤：${esc(err.message || err)}</div>`;
+    }
+  }
+
+  function renderTable(headers, rows, opts) {
+    opts = opts || {};
+    const th = headers.map(h => `<th>${esc(h)}</th>`).join("");
+    if (!rows.length) {
+      return `<div class="table-wrap"><table class="excel"><thead><tr>${th}</tr></thead><tbody><tr><td colspan="${headers.length}">（無）</td></tr></tbody></table></div>`;
+    }
+    const body = rows.map(row => {
+      let trClass = "";
+      if (opts.riskClass) {
+        const st = row[row.length - 2];
+        trClass = st === "未跟進" ? " class=\"risk-open\"" : " class=\"risk-done\"";
+      }
+      const cells = row.map((c, i) => {
+        let cls = "";
+        if (opts.diffHighlight && i >= 5) cls = ' class="changed"';
+        return `<td${cls}>${esc(fmtCell(c))}</td>`;
+      }).join("");
+      return `<tr${trClass}>${cells}</tr>`;
+    }).join("");
+    return `<div class="table-wrap"><table class="excel"><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div>`;
+  }
+
+  function renderResult(res) {
+    const { regions, per, loaded, name_a, name_b } = res;
+    let html = `<div class="tabs" id="regionTabs">`;
+    regions.forEach((r, i) => {
+      html += `<button type="button" class="tab${i === 0 ? " active" : ""}" data-region="${esc(r)}">${esc(r)}</button>`;
+    });
+    html += `</div><div id="regionPanels">`;
+
+    regions.forEach((region, i) => {
+      const d = per[region];
+      const L = loaded[region];
+      const openN = d.risk.filter(r => r[r.length - 2] === "未跟進").length;
+      const riskOpenRows = d.risk.filter(r => r[r.length - 2] === "未跟進").map(r => r.slice(0, 8));
+      const newSorted = sortDisplayRows(d.new, "received", true);
+      const overdueSorted = sortDisplayRows(d.overdue, "deadline", false);
+      const deadSorted = sortDisplayRows(d.dead, "received", true);
+      const delayedSorted = sortDisplayRows(d.delayed, "received", true);
+      const riskOpenSorted = sortDisplayRows(riskOpenRows, "received", true);
+
+      html += `<div class="region-panel" data-region="${esc(region)}" style="${i ? "display:none" : ""}">`;
+      html += `<div class="kpis">
+        <div class="kpi"><b>${L.onlyA.length}</b><span>只在 ${esc(name_a)}</span></div>
+        <div class="kpi"><b>${L.onlyB.length}</b><span>只在 ${esc(name_b)}</span></div>
+        <div class="kpi"><b>${L.contentDiff.length}</b><span>內容 Diff</span></div>
+        <div class="kpi"><b>${d.new.length}</b><span>新 Case No.</span></div>
+        <div class="kpi"><b>${d.overdue.length}</b><span>逾期未完成</span></div>
+        <div class="kpi"><b>${d.dead.length}</b><span>Dead 非 removal</span></div>
+        <div class="kpi"><b>${d.delayed.length}</b><span>延後</span></div>
+        <div class="kpi"><b>${openN}</b><span>高風險未跟進</span></div>
+        <div class="kpi"><b>${Object.keys(L.aRecs).length}</b><span>${esc(name_a)} 筆數</span></div>
+        <div class="kpi"><b>${Object.keys(L.bRecs).length}</b><span>${esc(name_b)} 筆數</span></div>
+      </div>`;
+
+      html += `<h2>1. ${esc(name_b)} 有、${esc(name_a)} 沒有的 Case No.　${badgeWarn(d.new.length)}</h2>`;
+      html += renderTable(DISPLAY_COLS, newSorted);
+
+      html += `<h2>2. 已過 Case deadline 且未完成　${badgeBad(d.overdue.length)}</h2>`;
+      html += renderTable(DISPLAY_COLS, overdueSorted);
+
+      html += `<h2>3. Dead tree 但 Mitigation 不是 removal/fell/TPC/Non-TPC　${badgeBad(d.dead.length)}</h2>`;
+      html += renderTable(DISPLAY_COLS, deadSorted);
+
+      html += `<h2>4. 延後　${badgeWarn(d.delayed.length)}</h2>`;
+      html += renderTable(DISPLAY_COLS, delayedSorted);
+
+      html += `<h2>5. 高風險未跟進 ${openN} / 共 ${d.risk.length}　${badgeBad(openN)}</h2>`;
+      html += renderTable(DISPLAY_COLS, riskOpenSorted);
+
+      // Optional detail
+      if (L.onlyA.length) {
+        const rows = L.onlyA.map(k => displayRow(L.aRecs[k], k));
+        html += `<details class="block"><summary>詳細：只在 ${esc(name_a)}（${L.onlyA.length}）</summary>`;
+        html += renderTable(DISPLAY_COLS, rows);
+        html += `</details>`;
+      }
+      if (L.onlyB.length) {
+        const rows = L.onlyB.map(k => displayRow(L.bRecs[k], k));
+        html += `<details class="block"><summary>詳細：只在 ${esc(name_b)}（${L.onlyB.length}）</summary>`;
+        html += renderTable(DISPLAY_COLS, rows);
+        html += `</details>`;
+      }
+      if (L.contentDiff.length) {
+        const diffHeaders = ["Case No.", "Tree ID", "Estate", "Date Received", "Field", name_a + " Value", name_b + " Value"];
+        const diffRows = [];
+        for (const [key, diffs] of L.contentDiff) {
+          const [c, t] = splitKey(key);
+          const estate = L.aRecs[key]["Estate"] || L.bRecs[key]["Estate"];
+          const dr = L.aRecs[key]["Date Received"] || L.bRecs[key]["Date Received"];
+          for (const [col, va, vb] of diffs) {
+            diffRows.push([c, t, estate, dr, col, va == null ? "" : va, vb == null ? "" : vb]);
+          }
+        }
+        html += `<details class="block"><summary>詳細：Diff（${L.contentDiff.length} keys）</summary>`;
+        html += renderTable(diffHeaders, diffRows, { diffHighlight: true });
+        html += `</details>`;
+      }
+      if (d.risk.length) {
+        const riskHeaders = DISPLAY_COLS.concat(["命中字眼", "有冇跟進", "Works Completion Date"]);
+        const riskSorted = sortDisplayRows(d.risk, "received", true);
+        html += `<details class="block"><summary>詳細：Risk 全表（${d.risk.length}）</summary>`;
+        html += renderTable(riskHeaders, riskSorted, { riskClass: true });
+        html += `</details>`;
+      }
+
+      html += `</div>`;
+    });
+    html += `</div>`;
+    out.innerHTML = html;
+
+    out.querySelectorAll("#regionTabs .tab").forEach(btn => {
+      btn.addEventListener("click", () => {
+        out.querySelectorAll("#regionTabs .tab").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        const reg = btn.getAttribute("data-region");
+        out.querySelectorAll(".region-panel").forEach(p => {
+          p.style.display = p.getAttribute("data-region") === reg ? "" : "none";
+        });
+      });
+    });
+  }
+
+  function sheetCell(ws, r, c, v, style) {
+    const addr = XLSX.utils.encode_cell({ r, c });
+    let cell;
+    if (v instanceof Date) {
+      cell = { t: "d", v: v, z: "yyyy-mm-dd" };
+    } else if (typeof v === "number") {
+      cell = { t: "n", v: v };
+    } else if (v == null || v === "") {
+      cell = { t: "s", v: "" };
+    } else {
+      cell = { t: "s", v: String(v) };
+    }
+    if (style) cell.s = style;
+    ws[addr] = cell;
+  }
+
+  function appendRow(ws, rowIdx, values, fillRgb) {
+    values.forEach((v, c) => {
+      const style = fillRgb ? { fill: { fgColor: { rgb: fillRgb } } } : undefined;
+      // SheetJS community build may ignore cell styles; still set values
+      sheetCell(ws, rowIdx, c, v instanceof Date ? v : (v == null ? "" : v));
+      if (fillRgb && ws[XLSX.utils.encode_cell({ r: rowIdx, c })]) {
+        ws[XLSX.utils.encode_cell({ r: rowIdx, c })].s = {
+          fill: { patternType: "solid", fgColor: { rgb: fillRgb } },
+        };
+      }
+    });
+    return rowIdx + 1;
+  }
+
+  function ensureAOA(ws, rows) {
+    XLSX.utils.sheet_add_aoa(ws, rows, { origin: -1 });
+  }
+
+  function downloadExcel() {
+    if (!lastResult) return;
+    const { name_a, name_b, d1, d2, asOf, regions, loaded, per, na, nb } = lastResult;
+    const wb = XLSX.utils.book_new();
+    const scope = (d1 || d2) ? `${ymd(d1) || "不限"} 至 ${ymd(d2) || "不限"}` : "全部日期";
+    const cols = DISPLAY_COLS;
+
+    // Detail sheets first (Python creates Only/Diff before Summary, then inserts Summary at 0)
+    // SheetJS book order = append order; we'll append Summary sheets first to match Summary_* first
+    const summarySheets = [];
+    const detailSheets = [];
+
+    for (const region of regions) {
+      const d = loaded[region];
+      const p = per[region];
+      // Only A
+      if (d.onlyA.length) {
+        const aoa = [cols];
+        for (const key of d.onlyA) aoa.push(displayRow(d.aRecs[key], key).map(fmtCell));
+        detailSheets.push({ name: `${region}_Only_${na}`.slice(0, 31), aoa });
+      }
+      if (d.onlyB.length) {
+        const aoa = [cols];
+        for (const key of d.onlyB) aoa.push(displayRow(d.bRecs[key], key).map(fmtCell));
+        detailSheets.push({ name: `${region}_Only_${nb}`.slice(0, 31), aoa });
+      }
+      if (d.contentDiff.length) {
+        const aoa = [["Case No.", "Tree ID", "Estate", "Date Received", "Field", `${name_a} Value`, `${name_b} Value`]];
+        for (const [key, diffs] of d.contentDiff) {
+          const [c, t] = splitKey(key);
+          const estate = d.aRecs[key]["Estate"] || d.bRecs[key]["Estate"];
+          const dr = d.aRecs[key]["Date Received"] || d.bRecs[key]["Date Received"];
+          for (const [col, va, vb] of diffs) {
+            aoa.push([c, t, fmtCell(estate), fmtCell(dr), col, va == null ? "" : String(va instanceof Date ? ymd(va) : va), vb == null ? "" : String(vb instanceof Date ? ymd(vb) : vb)]);
+          }
+        }
+        detailSheets.push({ name: `${region}_Diff`.slice(0, 31), aoa });
+      }
+    }
+
+    for (const region of regions) {
+      const p = per[region];
+      const rn = safeName(region);
+      const aoa = [];
+      aoa.push([`${region}  ${name_a} vs ${name_b}`]);
+      aoa.push([`範圍: ${scope}   逾期以 ${ymd(asOf)} 計`]);
+      aoa.push([]);
+
+      function writeBlock(title, rows, sortBy, newestFirst, _fill) {
+        aoa.push([title]);
+        aoa.push(cols);
+        const sorted = sortDisplayRows(rows, sortBy, newestFirst);
+        if (!sorted.length) {
+          aoa.push(cols.map(() => ""));
+        } else {
+          for (const row of sorted) aoa.push(row.map(fmtCell));
+        }
+        aoa.push([]);
+      }
+
+      writeBlock(`1. ${name_b} 有、${name_a} 沒有的 Case No. — ${p.new.length}`, p.new, "received", true, FILL_NEW);
+      writeBlock(`2. 已過 Case deadline 且未完成 — ${p.overdue.length}`, p.overdue, "deadline", false, FILL_OVERDUE);
+      writeBlock(`3. Dead tree 但 Mitigation 不是 removal/fell/TPC/Non-TPC — ${p.dead.length}`, p.dead, "received", true, FILL_DEAD);
+      writeBlock(`4. 延後 — ${p.delayed.length}`, p.delayed, "received", true, FILL_DELAYED);
+      const openN = p.risk.filter(r => r[r.length - 2] === "未跟進").length;
+      writeBlock(`5. 高風險未跟進 ${openN} / 共 ${p.risk.length}`, p.risk.filter(r => r[r.length - 2] === "未跟進").map(r => r.slice(0, 8)), "received", true, FILL_RISK);
+
+      summarySheets.push({ name: `Summary_${region}`.slice(0, 31), aoa });
+
+      if (p.risk.length) {
+        const headers = cols.concat(["命中字眼", "有冇跟進", "Works Completion Date"]);
+        const aoaR = [headers];
+        for (const row of sortDisplayRows(p.risk, "received", true)) {
+          aoaR.push(row.map(fmtCell));
+        }
+        detailSheets.push({ name: `${region}_Risk`.slice(0, 31), aoa: aoaR });
+      }
+    }
+
+    // Append Summary first then details (approximate Python order with Summary at front)
+    for (const sh of summarySheets) {
+      const ws = XLSX.utils.aoa_to_sheet(sh.aoa);
+      XLSX.utils.book_append_sheet(wb, ws, sh.name);
+    }
+    for (const sh of detailSheets) {
+      // avoid duplicate sheet names
+      let n = sh.name;
+      let i = 2;
+      while (wb.SheetNames.includes(n)) { n = (sh.name.slice(0, 28) + "_" + i).slice(0, 31); i++; }
+      const ws = XLSX.utils.aoa_to_sheet(sh.aoa);
+      XLSX.utils.book_append_sheet(wb, ws, n);
+    }
+
+    const stamp = (() => {
+      const d = new Date();
+      const p2 = n => String(n).padStart(2, "0");
+      return `${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}`;
+    })();
+    XLSX.writeFile(wb, `Diff_${stamp}.xlsx`);
+  }
+
+  btnCompare.onclick = runCompare;
+  btnDownload.onclick = downloadExcel;
+})();
+</script>
+</body>
+</html>
