@@ -241,16 +241,29 @@ def safe_name(s):
     if s[0].isdigit(): s="N"+s
     return s
 
+def should_skip_sheet(name):
+    """Skip M KC / M WTT / Crystal Used maintenance sheets."""
+    s = str(name or "").strip()
+    if re.match(r"^M\s", s, re.I):
+        return True
+    if re.search(r"crystal", s, re.I):
+        return True
+    return False
+
 def load_all(wb, date_from, date_to):
     """Load every sheet that has Case No. + Tree ID. Return {region: records}."""
     out={}
     for name in wb.sheetnames:
+        if should_skip_sheet(name):
+            continue
         recs=load_sheet(wb[name], date_from, date_to)
         if not recs: continue
         # Summary sheet: split by Region column if present
         if name=="Summary":
             for k,r in recs.items():
                 reg=(r.get("Region") or "Summary")
+                if should_skip_sheet(reg):
+                    continue
                 out.setdefault(str(reg), {})[k]=r
         else:
             out[name]=recs

@@ -427,9 +427,18 @@ details.block summary{cursor:pointer;font-weight:700;font-size:13px;color:#0f172
     return records;
   }
 
+  function shouldSkipSheet(name) {
+    const s = String(name || "").trim();
+    // Skip M KC / M WTT / Crystal Used maintenance sheets (and Summary splits of them)
+    if (/^M\s/i.test(s)) return true;
+    if (/crystal/i.test(s)) return true;
+    return false;
+  }
+
   function loadAll(wb, dateFrom, dateTo) {
     const outMap = {};
     for (const name of wb.SheetNames) {
+      if (shouldSkipSheet(name)) continue;
       const ws = wb.Sheets[name];
       const rows = sheetToRows(ws);
       const recs = loadSheetFromRows(rows, dateFrom, dateTo, name);
@@ -437,6 +446,7 @@ details.block summary{cursor:pointer;font-weight:700;font-size:13px;color:#0f172
       if (name === "Summary") {
         for (const [k, r] of Object.entries(recs)) {
           const reg = r["Region"] != null ? String(r["Region"]) : "Summary";
+          if (shouldSkipSheet(reg)) continue;
           if (!outMap[reg]) outMap[reg] = {};
           outMap[reg][k] = r;
         }
