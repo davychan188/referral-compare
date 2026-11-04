@@ -117,10 +117,13 @@ def is_incomplete(rec):
     return rec.get("Works Completion Date") is None
 
 def is_overdue_incomplete(rec, as_of=None):
-    if not is_incomplete(rec) or deadline_is_one_day_from_received(rec): return False
-    d=rec.get("Case deadline")
-    if not isinstance(d, date): return False
-    return d <= (as_of or date.today())
+    """收案已過 16 日且檢查當日無 Works Completion Date → 未完成。"""
+    if not is_incomplete(rec) or deadline_is_one_day_from_received(rec):
+        return False
+    received = rec.get("Date Received")
+    if not isinstance(received, date):
+        return False
+    return ((as_of or date.today()) - received).days >= 16
 
 def risk_hits(rec):
     obs = norm_text(rec.get("Observation")) or ""
@@ -180,6 +183,10 @@ def is_tpc_mit(rec):
 def is_tree_removal_mit(rec):
     mit = mit_n(rec)
     return any(w in mit for w in ("tree removal", "removal", "remove", "fell", "felling"))
+
+def is_no_mitigation_required(rec):
+    """Mitigation 含 no mitigation required（hyphen/space 已由 norm_text 正規化）。"""
+    return "no mitigation required" in mit_n(rec)
 
 def is_dead_tree_anomaly(rec):
     """Dead-tree-like 但 Mitigation 空白，又或者唔係 Non-TPC／TPC／tree removal。"""
@@ -360,8 +367,8 @@ def run_compare(a_path, b_path, output_path, name_a="A", name_b="B", date_from=N
         for key in d["only_b"]:
             if key[0] and key[0] not in all_a and key[0] not in seen:
                 seen.add(key[0]); new.append(display_row(b_recs[key], key))
-        overdue, pruning_branch, dieback_nontpc, removal_need_tpc, removal_tpc, nontpc_tpc, dead_anom, delayed, risk = (
-            [], [], [], [], [], [], [], [], []
+        overdue, no_mit_req, removal_need_tpc, nontpc_tpc, dead_anom, delayed, risk = (
+            [], [], [], [], [], [], []
         )
         combined=list(b_recs.items())+[(k, a_recs[k]) for k in d["only_a"]]
         for key, rec in combined:
@@ -372,14 +379,10 @@ def run_compare(a_path, b_path, output_path, name_a="A", name_b="B", date_from=N
             row=display_row(rec, key)
             if is_overdue_incomplete(rec, as_of):
                 overdue.append(row)
-            if is_dead_branch_obs(rec) and is_pruning_mit(rec):
-                pruning_branch.append(row + [completion_status(rec), rec.get("Works Completion Date")])
-            if is_dead_tree_like_obs(rec) and is_non_tpc_mit(rec):
-                dieback_nontpc.append(row + ["Non-TPC", completion_status(rec), rec.get("Works Completion Date")])
+            if is_no_mitigation_required(rec):
+                no_mit_req.append(row + [completion_status(rec), rec.get("Works Completion Date")])
             if is_tree_removal_mit(rec) and not is_tpc_mit(rec) and not is_non_tpc_mit(rec):
                 removal_need_tpc.append(row + [completion_status(rec), rec.get("Works Completion Date")])
-            elif is_tree_removal_mit(rec) and is_tpc_mit(rec):
-                removal_tpc.append(row + ["TPC", completion_status(rec), rec.get("Works Completion Date")])
             if is_non_tpc_mit(rec):
                 nontpc_tpc.append(row + ["Non-TPC", completion_status(rec), rec.get("Works Completion Date")])
             elif is_tpc_mit(rec):
@@ -389,10 +392,9 @@ def run_compare(a_path, b_path, output_path, name_a="A", name_b="B", date_from=N
             if is_delayed_remark(rec):
                 delayed.append(row)
         per[region]=dict(
-            new=new, overdue=overdue, pruning_branch=pruning_branch,
-            dieback_nontpc=dieback_nontpc, removal_need_tpc=removal_need_tpc,
-            removal_tpc=removal_tpc, nontpc_tpc=nontpc_tpc, dead_anom=dead_anom,
-            delayed=delayed, risk=risk,
+            new=new, overdue=overdue, no_mit_req=no_mit_req,
+            removal_need_tpc=removal_need_tpc, nontpc_tpc=nontpc_tpc,
+            dead_anom=dead_anom, delayed=delayed, risk=risk,
         )
         for label, keys, recs in ((f"{region}_Only_{na}", d["only_a"], a_recs),(f"{region}_Only_{nb}", d["only_b"], b_recs)):
             if not keys: continue
@@ -431,13 +433,10 @@ def run_compare(a_path, b_path, output_path, name_a="A", name_b="B", date_from=N
         ws.append([f"範圍: {scope}   逾期以 {as_of or date.today()} 計"])
         ws.append([])
         rn=safe_name(region)
-        done_n=sum(1 for r in d["pruning_branch"] if len(r)>8 and r[8]=="已完成")
         write_block(ws, f"新 Case（{name_b} 有、{name_a} 沒有）— {len(d['new'])}", d["new"], cols, fills[0], f"{rn}_{nb}New", newest_first=True)
-        write_block(ws, f"0. Case deadline 已過且未完成 — {len(d['overdue'])}", d["overdue"], cols, fills[1], f"{rn}Overdue", sort_by="deadline", newest_first=False)
-        write_block(ws, f"1. Dead branch／Broken branch + pruning（已完成 {done_n}／共 {len(d['pruning_branch'])}）— {len(d['pruning_branch'])}", d["pruning_branch"], cols_done, fills[2], f"{rn}Prune")
-        write_block(ws, f"2. Dead tree／wilted／wilting／dieback + Non-TPC — {len(d['dieback_nontpc'])}", d["dieback_nontpc"], cols_class, fills[3], f"{rn}DieNontpc")
+        write_block(ws, f"0. Case deadline：收案已過 16 日且無 Works Completion Date（未完成）— {len(d['overdue'])}", d["overdue"], cols, fills[1], f"{rn}Overdue", sort_by="received", newest_first=False)
+        write_block(ws, f"No mitigation required — {len(d['no_mit_req'])}", d["no_mit_req"], cols_done, fills[2], f"{rn}NoMit")
         write_block(ws, f"3. Tree removal 應為 TPC（異常／待標 TPC）— {len(d['removal_need_tpc'])}", d["removal_need_tpc"], cols_done, fills[4], f"{rn}RemNeed")
-        write_block(ws, f"3b. Tree removal／TPC — {len(d['removal_tpc'])}", d["removal_tpc"], cols_class, fills[5], f"{rn}RemTpc")
         write_block(ws, f"4. Non-TPC／TPC — {len(d['nontpc_tpc'])}", d["nontpc_tpc"], cols_class, fills[6], f"{rn}TpcClass")
         write_block(ws, f"異常：Dead tree-like 但 Mitigation 未標 Non-TPC／TPC／removal — {len(d['dead_anom'])}", d["dead_anom"], cols_anom, fills[7], f"{rn}DeadAnom")
         write_block(ws, f"延後 — {len(d['delayed'])}", d["delayed"], cols, fills[3], f"{rn}Delayed")
