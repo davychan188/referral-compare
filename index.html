@@ -7,7 +7,7 @@
 <meta charset="utf-8">
 <title>Referral Cases 對比</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
 <style>
 :root{--g:#14532d;--bg:#f3f6f3;--line:#d5e0d5;--ok:#166534;--bad:#b91c1c;--warn:#b45309}
 *{box-sizing:border-box}
@@ -68,7 +68,7 @@ details.block summary{cursor:pointer;font-weight:700;font-size:13px;color:#0f172
 </head>
 <body>
 <header>
-  <h1>Referral Cases 對比 <span id="buildVer" style="font-size:12px;font-weight:600;opacity:.85;margin-left:8px">build 20261104f</span></h1>
+  <h1>Referral Cases 對比 <span id="buildVer" style="font-size:12px;font-weight:600;opacity:.85;margin-left:8px">build 20261104g</span></h1>
   <p>對比兩份 Housing Referral Excel（Case No. + Tree ID）。資料只在瀏覽器處理，不會上傳。</p>
 </header>
 <div class="wrap">
@@ -866,38 +866,106 @@ details.block summary{cursor:pointer;font-weight:700;font-size:13px;color:#0f172
     });
   }
 
-  function sheetCell(ws, r, c, v, style) {
-    const addr = XLSX.utils.encode_cell({ r, c });
+  function excelSerialDate(v) {
+    if (!(v instanceof Date) || isNaN(v.getTime())) return null;
+    const y = v.getFullYear(), m = v.getMonth(), d = v.getDate();
+    return Date.UTC(y, m, d) / 864e5 + 25569;
+  }
+  function styleTitle() {
+    return { font: { bold: true, sz: 14, color: { rgb: "1F4E79" } } };
+  }
+  function styleSection() {
+    return { font: { bold: true, sz: 12, color: { rgb: "1F4E79" } } };
+  }
+  function styleHeader() {
+    return {
+      font: { bold: true, sz: 11, color: { rgb: "FFFFFF" } },
+      fill: { patternType: "solid", fgColor: { rgb: FILL_HEADER } },
+      alignment: { wrapText: true, vertical: "center", horizontal: "center" },
+      border: {
+        top: { style: "thin", color: { rgb: "000000" } },
+        bottom: { style: "thin", color: { rgb: "000000" } },
+        left: { style: "thin", color: { rgb: "000000" } },
+        right: { style: "thin", color: { rgb: "000000" } },
+      },
+    };
+  }
+  function styleData(fillRgb) {
+    const s = { font: { sz: 11 } };
+    if (fillRgb) s.fill = { patternType: "solid", fgColor: { rgb: fillRgb } };
+    return s;
+  }
+  function makeExcelCell(v, style) {
     let cell;
-    if (v instanceof Date) {
-      cell = { t: "d", v: v, z: "yyyy-mm-dd" };
-    } else if (typeof v === "number") {
-      cell = { t: "n", v: v };
+    if (v instanceof Date && !isNaN(v.getTime())) {
+      cell = { t: "n", v: excelSerialDate(v), z: "yyyy-mm-dd" };
+    } else if (typeof v === "number" && Number.isFinite(v)) {
+      cell = { t: "n", v };
     } else if (v == null || v === "") {
       cell = { t: "s", v: "" };
     } else {
       cell = { t: "s", v: String(v) };
     }
     if (style) cell.s = style;
-    ws[addr] = cell;
+    return cell;
   }
-
-  function appendRow(ws, rowIdx, values, fillRgb) {
-    values.forEach((v, c) => {
-      const style = fillRgb ? { fill: { fgColor: { rgb: fillRgb } } } : undefined;
-      // SheetJS community build may ignore cell styles; still set values
-      sheetCell(ws, rowIdx, c, v instanceof Date ? v : (v == null ? "" : v));
-      if (fillRgb && ws[XLSX.utils.encode_cell({ r: rowIdx, c })]) {
-        ws[XLSX.utils.encode_cell({ r: rowIdx, c })].s = {
-          fill: { patternType: "solid", fgColor: { rgb: fillRgb } },
-        };
+  function buildStyledSheet(rowSpecs, colWidths) {
+    const ws = {};
+    let maxR = 0, maxC = 0;
+    rowSpecs.forEach((spec, r) => {
+      const vals = spec.values || [];
+      if (!vals.length) {
+        maxR = Math.max(maxR, r);
+        return;
       }
+      let style;
+      if (spec.kind === "title") style = styleTitle();
+      else if (spec.kind === "section") style = styleSection();
+      else if (spec.kind === "header") style = styleHeader();
+      else if (spec.kind === "data") style = styleData(spec.fill);
+      else style = spec.style || undefined;
+      vals.forEach((v, c) => {
+        ws[XLSX.utils.encode_cell({ r, c })] = makeExcelCell(v, style);
+        maxC = Math.max(maxC, c);
+      });
+      maxR = Math.max(maxR, r);
     });
-    return rowIdx + 1;
+    ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: Math.max(maxC, 0) } });
+    if (colWidths && colWidths.length) {
+      ws["!cols"] = colWidths.map(w => ({ wch: w }));
+    }
+    return ws;
   }
-
-  function ensureAOA(ws, rows) {
-    XLSX.utils.sheet_add_aoa(ws, rows, { origin: -1 });
+  function approxWidths(rowSpecs, maxCols) {
+    const widths = Array.from({ length: maxCols }, () => 10);
+    for (const spec of rowSpecs) {
+      (spec.values || []).forEach((v, i) => {
+        if (i >= maxCols) return;
+        let len = 0;
+        if (v instanceof Date) len = 10;
+        else if (v == null) len = 0;
+        else len = Math.min(String(v).length, 55);
+        widths[i] = Math.min(Math.max(widths[i], len + 2, 10), 45);
+      });
+    }
+    return widths;
+  }
+  function rawExcelVal(v) {
+    // Keep Date objects for Excel; stringify nothing here.
+    if (v == null) return "";
+    return v;
+  }
+  function excelDisplayRow(row) {
+    return row.map(rawExcelVal);
+  }
+  function appendSheet(wb, name, ws) {
+    let n = String(name || "Sheet").slice(0, 31);
+    let i = 2;
+    while (wb.SheetNames.includes(n)) {
+      n = (String(name).slice(0, 28) + "_" + i).slice(0, 31);
+      i++;
+    }
+    XLSX.utils.book_append_sheet(wb, ws, n);
   }
 
   function downloadExcel() {
@@ -906,59 +974,57 @@ details.block summary{cursor:pointer;font-weight:700;font-size:13px;color:#0f172
     const wb = XLSX.utils.book_new();
     const scope = (d1 || d2) ? `${ymd(d1) || "不限"} 至 ${ymd(d2) || "不限"}` : "全部日期";
     const cols = DISPLAY_COLS;
-
-    // Detail sheets first (Python creates Only/Diff before Summary, then inserts Summary at 0)
-    // SheetJS book order = append order; we'll append Summary sheets first to match Summary_* first
     const summarySheets = [];
     const detailSheets = [];
+    const SUMMARY_WIDTHS = [45, 24, 18, 15, 12, 45, 24, 15, 14, 16, 16];
 
     for (const region of regions) {
       const d = loaded[region];
-      const p = per[region];
-      // Only A
       if (d.onlyA.length) {
-        const aoa = [cols];
-        for (const key of d.onlyA) aoa.push(displayRow(d.aRecs[key], key).map(fmtCell));
-        detailSheets.push({ name: `${region}_Only_${na}`.slice(0, 31), aoa });
+        const specs = [{ kind: "header", values: cols.slice() }];
+        for (const key of d.onlyA) specs.push({ kind: "data", values: excelDisplayRow(displayRow(d.aRecs[key], key)) });
+        detailSheets.push({ name: `${region}_Only_${na}`.slice(0, 31), specs, widths: approxWidths(specs, cols.length) });
       }
       if (d.onlyB.length) {
-        const aoa = [cols];
-        for (const key of d.onlyB) aoa.push(displayRow(d.bRecs[key], key).map(fmtCell));
-        detailSheets.push({ name: `${region}_Only_${nb}`.slice(0, 31), aoa });
+        const specs = [{ kind: "header", values: cols.slice() }];
+        for (const key of d.onlyB) specs.push({ kind: "data", values: excelDisplayRow(displayRow(d.bRecs[key], key)) });
+        detailSheets.push({ name: `${region}_Only_${nb}`.slice(0, 31), specs, widths: approxWidths(specs, cols.length) });
       }
       if (d.contentDiff.length) {
-        const aoa = [["Case No.", "Tree ID", "Estate", "Date Received", "Field", `${name_a} Value`, `${name_b} Value`]];
+        const headers = ["Case No.", "Tree ID", "Estate", "Date Received", "Field", `${name_a} Value`, `${name_b} Value`];
+        const specs = [{ kind: "header", values: headers }];
         for (const [key, diffs] of d.contentDiff) {
           const [c, t] = splitKey(key);
           const estate = d.aRecs[key]["Estate"] || d.bRecs[key]["Estate"];
           const dr = d.aRecs[key]["Date Received"] || d.bRecs[key]["Date Received"];
           for (const [col, va, vb] of diffs) {
-            aoa.push([c, t, fmtCell(estate), fmtCell(dr), col, va == null ? "" : String(va instanceof Date ? ymd(va) : va), vb == null ? "" : String(vb instanceof Date ? ymd(vb) : vb)]);
+            const sa = va == null ? "" : (va instanceof Date ? ymd(va) : String(va));
+            const sb = vb == null ? "" : (vb instanceof Date ? ymd(vb) : String(vb));
+            specs.push({ kind: "data", fill: FILL_DIFF, values: [c, t, estate, dr, col, sa, sb] });
           }
         }
-        detailSheets.push({ name: `${region}_Diff`.slice(0, 31), aoa });
+        detailSheets.push({ name: `${region}_Diff`.slice(0, 31), specs, widths: approxWidths(specs, headers.length) });
       }
     }
 
     for (const region of regions) {
       const p = per[region];
-      const rn = safeName(region);
-      const aoa = [];
-      aoa.push([`${region}  ${name_a} vs ${name_b}`]);
-      aoa.push([`範圍: ${scope}   逾期以 ${ymd(asOf)} 計`]);
-      aoa.push([]);
+      const specs = [];
+      specs.push({ kind: "title", values: [`${region}  ${name_a} vs ${name_b}`] });
+      specs.push({ kind: "plain", values: [`範圍: ${scope}   逾期以 ${ymd(asOf)} 計`] });
+      specs.push({ kind: "plain", values: [""] });
 
-      function writeBlock(title, rows, sortBy, newestFirst, _fill, headers) {
+      function writeBlock(title, rows, sortBy, newestFirst, fill, headers) {
         const hdrs = headers || cols;
-        aoa.push([title]);
-        aoa.push(hdrs);
+        specs.push({ kind: "section", values: [title] });
+        specs.push({ kind: "header", values: hdrs.slice() });
         const sorted = sortDisplayRows(rows, sortBy, newestFirst);
         if (!sorted.length) {
-          aoa.push(hdrs.map(() => ""));
+          specs.push({ kind: "data", fill, values: hdrs.map(() => "") });
         } else {
-          for (const row of sorted) aoa.push(row.map(fmtCell));
+          for (const row of sorted) specs.push({ kind: "data", fill, values: excelDisplayRow(row) });
         }
-        aoa.push([]);
+        specs.push({ kind: "plain", values: [""] });
       }
 
       const pruneDoneN = p.pruningBranch.filter(r => r[8] === "已完成").length;
@@ -974,34 +1040,40 @@ details.block summary{cursor:pointer;font-weight:700;font-size:13px;color:#0f172
       const openN = p.risk.filter(r => r[r.length - 2] === "未跟進").length;
       writeBlock(`高風險未跟進 ${openN} / 共 ${p.risk.length}`, p.risk.filter(r => r[r.length - 2] === "未跟進").map(r => r.slice(0, 8)), "received", true, FILL_RISK, cols);
 
-      summarySheets.push({ name: `Summary_${region}`.slice(0, 31), aoa });
+      const maxCols = Math.max(...specs.map(s => (s.values || []).length), 8);
+      summarySheets.push({
+        name: `Summary_${region}`.slice(0, 31),
+        specs,
+        widths: SUMMARY_WIDTHS.slice(0, maxCols),
+      });
 
       if (p.risk.length) {
         const headers = cols.concat(["命中字眼", "有冇跟進", "Works Completion Date"]);
-        const aoaR = [headers];
+        const riskSpecs = [{ kind: "header", values: headers }];
         for (const row of sortDisplayRows(p.risk, "received", true)) {
-          aoaR.push(row.map(fmtCell));
+          const followed = row[row.length - 2] === "已跟進";
+          riskSpecs.push({
+            kind: "data",
+            fill: followed ? FILL_RISK_DONE : FILL_RISK,
+            values: excelDisplayRow(row),
+          });
         }
-        detailSheets.push({ name: `${region}_Risk`.slice(0, 31), aoa: aoaR });
+        detailSheets.push({
+          name: `${region}_Risk`.slice(0, 31),
+          specs: riskSpecs,
+          widths: approxWidths(riskSpecs, headers.length),
+        });
       }
     }
 
-    // Append Summary first then details (approximate Python order with Summary at front)
     for (const sh of summarySheets) {
-      const ws = XLSX.utils.aoa_to_sheet(sh.aoa);
-      XLSX.utils.book_append_sheet(wb, ws, sh.name);
+      appendSheet(wb, sh.name, buildStyledSheet(sh.specs, sh.widths));
     }
     for (const sh of detailSheets) {
-      // avoid duplicate sheet names
-      let n = sh.name;
-      let i = 2;
-      while (wb.SheetNames.includes(n)) { n = (sh.name.slice(0, 28) + "_" + i).slice(0, 31); i++; }
-      const ws = XLSX.utils.aoa_to_sheet(sh.aoa);
-      XLSX.utils.book_append_sheet(wb, ws, n);
+      appendSheet(wb, sh.name, buildStyledSheet(sh.specs, sh.widths));
     }
 
     const stamp = (() => {
-      // Diff_YYYYMMDD_HHMM in Asia/Hong_Kong, e.g. Diff_20261104_1859.xlsx
       const s = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Hong_Kong" });
       const m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
       if (!m) {
@@ -1013,10 +1085,9 @@ details.block summary{cursor:pointer;font-weight:700;font-size:13px;color:#0f172
     })();
     const filename = `Diff_${stamp}.xlsx`;
     try {
-      // Prefer SheetJS writeFile (sets download name reliably)
-      XLSX.writeFile(wb, filename, { bookType: "xlsx" });
+      XLSX.writeFile(wb, filename, { bookType: "xlsx", cellStyles: true });
     } catch (e) {
-      const raw = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const raw = XLSX.write(wb, { bookType: "xlsx", type: "array", cellStyles: true });
       const blob = new Blob([new Uint8Array(raw)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
