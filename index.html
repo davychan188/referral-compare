@@ -68,7 +68,7 @@ details.block summary{cursor:pointer;font-weight:700;font-size:13px;color:#0f172
 </head>
 <body>
 <header>
-  <h1>Referral Cases 對比 <span id="buildVer" style="font-size:12px;font-weight:600;opacity:.85;margin-left:8px">build 20261104e</span></h1>
+  <h1>Referral Cases 對比 <span id="buildVer" style="font-size:12px;font-weight:600;opacity:.85;margin-left:8px">build 20261104f</span></h1>
   <p>對比兩份 Housing Referral Excel（Case No. + Tree ID）。資料只在瀏覽器處理，不會上傳。</p>
 </header>
 <div class="wrap">
@@ -169,7 +169,10 @@ details.block summary{cursor:pointer;font-weight:700;font-size:13px;color:#0f172
   const COMPARE_COLS = ["Observation", "Mitigation", "Works Completion Date", "Date Received", "Case deadline"];
   const RISK_WORDS = ["dead tree", "wilting", "wilted", "severe sparse foliage", "root plate movement", "fungal fruiting"];
   const DISPLAY_COLS = ["Source of Referral", "Estate", "Case No.", "Date Received", "Tree ID", "Observation", "Mitigation", "Case deadline"];
-  const FILL_NEW = "E2EFDA", FILL_OVERDUE = "FCE4D6", FILL_DEAD = "F8CBAD", FILL_DELAYED = "DDEBF7";
+  const DISPLAY_COLS_DONE = DISPLAY_COLS.concat(["有冇完成", "Works Completion Date"]);
+  const DISPLAY_COLS_CLASS = DISPLAY_COLS.concat(["類別", "有冇完成", "Works Completion Date"]);
+  const DISPLAY_COLS_ANOM = DISPLAY_COLS.concat(["有冇完成", "Mitigation 原文"]);
+  const FILL_NEW = "E2EFDA", FILL_OVERDUE = "FCE4D6", FILL_DEAD = "F8CBAD", FILL_DELAYED = "DDEBF7", FILL_OK = "C6EFCE", FILL_CLASS = "E2F0D9", FILL_WARN2 = "FFF2CC";
   const FILL_RISK = "F4B183", FILL_RISK_DONE = "C6EFCE", FILL_DIFF = "FFF2CC", FILL_HEADER = "1F4E79";
 
   const dropA = document.getElementById("dropA");
@@ -345,11 +348,43 @@ details.block summary{cursor:pointer;font-weight:700;font-size:13px;color:#0f172
     const acted = ["removal", "remove", "fell", "felling", "tpc", "pruning", "prune", "done"].some(w => mit.includes(w));
     return (done || acted) ? "已跟進" : "未跟進";
   }
-  function isDeadTreeNotRemoval(rec) {
-    const obs = normText(rec["Observation"]) || "";
-    const mit = normText(rec["Mitigation"]) || "";
-    if (!obs.includes("dead tree")) return false;
-    return !["removal", "remove", "fell", "felling", "tpc", "non tpc", "nontpc"].some(w => mit.includes(w));
+  function completionStatus(rec) {
+    return rec["Works Completion Date"] != null ? "已完成" : "未完成";
+  }
+  function obsN(rec) { return normText(rec["Observation"]) || ""; }
+  function mitN(rec) { return normText(rec["Mitigation"]) || ""; }
+  function isDeadBranchObs(rec) {
+    const obs = obsN(rec);
+    if (obs.includes("dead branch") || obs.includes("broken branch")) return true;
+    if (obs.includes("dead and broken") && obs.includes("branch")) return true;
+    if (obs.includes("hanger") && (obs.includes("dead") || obs.includes("broken") || obs.includes("branch"))) return true;
+    return false;
+  }
+  function isPruningMit(rec) {
+    const mit = mitN(rec);
+    return mit.includes("pruning") || mit.includes("prune");
+  }
+  function isDeadTreeLikeObs(rec) {
+    const obs = obsN(rec);
+    return ["dead tree", "wilted", "wilting", "dieback", "die back", "abnormal defoliation", "wilted crown", "wilting crown"].some(k => obs.includes(k));
+  }
+  function isNonTpcMit(rec) {
+    const mit = mitN(rec);
+    return mit.includes("non tpc") || mit.includes("nontpc");
+  }
+  function isTpcMit(rec) {
+    const mit = mitN(rec);
+    if (!mit || isNonTpcMit(rec)) return false;
+    return /\btpc\b/.test(mit);
+  }
+  function isTreeRemovalMit(rec) {
+    const mit = mitN(rec);
+    return ["tree removal", "removal", "remove", "fell", "felling"].some(w => mit.includes(w));
+  }
+  function isDeadTreeAnomaly(rec) {
+    if (!isDeadTreeLikeObs(rec)) return false;
+    if (isNonTpcMit(rec) || isTpcMit(rec) || isTreeRemovalMit(rec)) return false;
+    return true;
   }
   function isDelayedRemark(rec) {
     const raw = String(rec["Remarks"] || "").toLowerCase();
@@ -636,7 +671,7 @@ details.block summary{cursor:pointer;font-weight:700;font-size:13px;color:#0f172
             neu.push(displayRow(bRecs[key], key));
           }
         }
-        const overdue = [], dead = [], delayed = [], risk = [];
+        const overdue = [], pruningBranch = [], diebackNontpc = [], removalNeedTpc = [], removalTpc = [], nontpcTpc = [], deadAnom = [], delayed = [], risk = [];
         const combined = [
           ...Object.entries(bRecs),
           ...d.onlyA.map(k => [k, aRecs[k]]),
@@ -649,10 +684,28 @@ details.block summary{cursor:pointer;font-weight:700;font-size:13px;color:#0f172
           if (deadlineIsOneDayFromReceived(rec)) continue;
           const row = displayRow(rec, key);
           if (isOverdueIncomplete(rec, asOf)) overdue.push(row);
-          if (isDeadTreeNotRemoval(rec)) dead.push(row);
+          if (isDeadBranchObs(rec) && isPruningMit(rec)) {
+            pruningBranch.push(row.concat([completionStatus(rec), rec["Works Completion Date"]]));
+          }
+          if (isDeadTreeLikeObs(rec) && isNonTpcMit(rec)) {
+            diebackNontpc.push(row.concat(["Non-TPC", completionStatus(rec), rec["Works Completion Date"]]));
+          }
+          if (isTreeRemovalMit(rec) && !isTpcMit(rec) && !isNonTpcMit(rec)) {
+            removalNeedTpc.push(row.concat([completionStatus(rec), rec["Works Completion Date"]]));
+          } else if (isTreeRemovalMit(rec) && isTpcMit(rec)) {
+            removalTpc.push(row.concat(["TPC", completionStatus(rec), rec["Works Completion Date"]]));
+          }
+          if (isNonTpcMit(rec)) {
+            nontpcTpc.push(row.concat(["Non-TPC", completionStatus(rec), rec["Works Completion Date"]]));
+          } else if (isTpcMit(rec)) {
+            nontpcTpc.push(row.concat(["TPC", completionStatus(rec), rec["Works Completion Date"]]));
+          }
+          if (isDeadTreeAnomaly(rec)) {
+            deadAnom.push(row.concat([completionStatus(rec), rec["Mitigation"]]));
+          }
           if (isDelayedRemark(rec)) delayed.push(row);
         }
-        per[region] = { new: neu, overdue, dead, delayed, risk };
+        per[region] = { new: neu, overdue, pruningBranch, diebackNontpc, removalNeedTpc, removalTpc, nontpcTpc, deadAnom, delayed, risk };
       }
 
       lastResult = {
@@ -704,9 +757,15 @@ details.block summary{cursor:pointer;font-weight:700;font-size:13px;color:#0f172
       const L = loaded[region];
       const openN = d.risk.filter(r => r[r.length - 2] === "未跟進").length;
       const riskOpenRows = d.risk.filter(r => r[r.length - 2] === "未跟進").map(r => r.slice(0, 8));
+      const pruneDoneN = d.pruningBranch.filter(r => r[8] === "已完成").length;
       const newSorted = sortDisplayRows(d.new, "received", true);
       const overdueSorted = sortDisplayRows(d.overdue, "deadline", false);
-      const deadSorted = sortDisplayRows(d.dead, "received", true);
+      const pruneSorted = sortDisplayRows(d.pruningBranch, "received", true);
+      const dieSorted = sortDisplayRows(d.diebackNontpc, "received", true);
+      const remNeedSorted = sortDisplayRows(d.removalNeedTpc, "received", true);
+      const remTpcSorted = sortDisplayRows(d.removalTpc, "received", true);
+      const classSorted = sortDisplayRows(d.nontpcTpc, "received", true);
+      const anomSorted = sortDisplayRows(d.deadAnom, "received", true);
       const delayedSorted = sortDisplayRows(d.delayed, "received", true);
       const riskOpenSorted = sortDisplayRows(riskOpenRows, "received", true);
 
@@ -717,26 +776,41 @@ details.block summary{cursor:pointer;font-weight:700;font-size:13px;color:#0f172
         <div class="kpi"><b>${L.contentDiff.length}</b><span>內容 Diff</span></div>
         <div class="kpi"><b>${d.new.length}</b><span>新 Case No.</span></div>
         <div class="kpi"><b>${d.overdue.length}</b><span>逾期未完成</span></div>
-        <div class="kpi"><b>${d.dead.length}</b><span>Dead 非 removal</span></div>
-        <div class="kpi"><b>${d.delayed.length}</b><span>延後</span></div>
+        <div class="kpi"><b>${d.pruningBranch.length}</b><span>Dead branch + pruning</span></div>
+        <div class="kpi"><b>${d.diebackNontpc.length}</b><span>Dieback + Non-TPC</span></div>
+        <div class="kpi"><b>${d.removalNeedTpc.length}</b><span>Removal 待標 TPC</span></div>
+        <div class="kpi"><b>${d.nontpcTpc.length}</b><span>Non-TPC／TPC</span></div>
         <div class="kpi"><b>${openN}</b><span>高風險未跟進</span></div>
-        <div class="kpi"><b>${Object.keys(L.aRecs).length}</b><span>${esc(name_a)} 筆數</span></div>
-        <div class="kpi"><b>${Object.keys(L.bRecs).length}</b><span>${esc(name_b)} 筆數</span></div>
       </div>`;
 
-      html += `<h2>1. ${esc(name_b)} 有、${esc(name_a)} 沒有的 Case No.　${badgeWarn(d.new.length)}</h2>`;
+      html += `<h2>新 Case（${esc(name_b)} 有、${esc(name_a)} 沒有）　${badgeWarn(d.new.length)}</h2>`;
       html += renderTable(DISPLAY_COLS, newSorted);
 
-      html += `<h2>2. 已過 Case deadline 且未完成　${badgeBad(d.overdue.length)}</h2>`;
+      html += `<h2>0. Case deadline 已過且未完成　${badgeBad(d.overdue.length)}</h2>`;
       html += renderTable(DISPLAY_COLS, overdueSorted);
 
-      html += `<h2>3. Dead tree 但 Mitigation 不是 removal/fell/TPC/Non-TPC　${badgeBad(d.dead.length)}</h2>`;
-      html += renderTable(DISPLAY_COLS, deadSorted);
+      html += `<h2>1. Dead branch／Broken branch + pruning（已完成 ${pruneDoneN}／共 ${d.pruningBranch.length}）　${badgeWarn(d.pruningBranch.length)}</h2>`;
+      html += renderTable(DISPLAY_COLS_DONE, pruneSorted);
 
-      html += `<h2>4. 延後　${badgeWarn(d.delayed.length)}</h2>`;
+      html += `<h2>2. Dead tree／wilted／wilting／dieback + Non-TPC　${badgeWarn(d.diebackNontpc.length)}</h2>`;
+      html += renderTable(DISPLAY_COLS_CLASS, dieSorted);
+
+      html += `<h2>3. Tree removal 應為 TPC（異常／待標 TPC）　${badgeBad(d.removalNeedTpc.length)}</h2>`;
+      html += renderTable(DISPLAY_COLS_DONE, remNeedSorted);
+
+      html += `<h2>3b. Tree removal／TPC　${badgeWarn(d.removalTpc.length)}</h2>`;
+      html += renderTable(DISPLAY_COLS_CLASS, remTpcSorted);
+
+      html += `<h2>4. Non-TPC／TPC　${badgeWarn(d.nontpcTpc.length)}</h2>`;
+      html += renderTable(DISPLAY_COLS_CLASS, classSorted);
+
+      html += `<h2>異常：Dead tree-like 但 Mitigation 未標 Non-TPC／TPC／removal　${badgeBad(d.deadAnom.length)}</h2>`;
+      html += renderTable(DISPLAY_COLS_ANOM, anomSorted);
+
+      html += `<h2>延後　${badgeWarn(d.delayed.length)}</h2>`;
       html += renderTable(DISPLAY_COLS, delayedSorted);
 
-      html += `<h2>5. 高風險未跟進 ${openN} / 共 ${d.risk.length}　${badgeBad(openN)}</h2>`;
+      html += `<h2>高風險未跟進 ${openN} / 共 ${d.risk.length}　${badgeBad(openN)}</h2>`;
       html += renderTable(DISPLAY_COLS, riskOpenSorted);
 
       // Optional detail
@@ -874,24 +948,31 @@ details.block summary{cursor:pointer;font-weight:700;font-size:13px;color:#0f172
       aoa.push([`範圍: ${scope}   逾期以 ${ymd(asOf)} 計`]);
       aoa.push([]);
 
-      function writeBlock(title, rows, sortBy, newestFirst, _fill) {
+      function writeBlock(title, rows, sortBy, newestFirst, _fill, headers) {
+        const hdrs = headers || cols;
         aoa.push([title]);
-        aoa.push(cols);
+        aoa.push(hdrs);
         const sorted = sortDisplayRows(rows, sortBy, newestFirst);
         if (!sorted.length) {
-          aoa.push(cols.map(() => ""));
+          aoa.push(hdrs.map(() => ""));
         } else {
           for (const row of sorted) aoa.push(row.map(fmtCell));
         }
         aoa.push([]);
       }
 
-      writeBlock(`1. ${name_b} 有、${name_a} 沒有的 Case No. — ${p.new.length}`, p.new, "received", true, FILL_NEW);
-      writeBlock(`2. 已過 Case deadline 且未完成 — ${p.overdue.length}`, p.overdue, "deadline", false, FILL_OVERDUE);
-      writeBlock(`3. Dead tree 但 Mitigation 不是 removal/fell/TPC/Non-TPC — ${p.dead.length}`, p.dead, "received", true, FILL_DEAD);
-      writeBlock(`4. 延後 — ${p.delayed.length}`, p.delayed, "received", true, FILL_DELAYED);
+      const pruneDoneN = p.pruningBranch.filter(r => r[8] === "已完成").length;
+      writeBlock(`新 Case（${name_b} 有、${name_a} 沒有）— ${p.new.length}`, p.new, "received", true, FILL_NEW, cols);
+      writeBlock(`0. Case deadline 已過且未完成 — ${p.overdue.length}`, p.overdue, "deadline", false, FILL_OVERDUE, cols);
+      writeBlock(`1. Dead branch／Broken branch + pruning（已完成 ${pruneDoneN}／共 ${p.pruningBranch.length}）— ${p.pruningBranch.length}`, p.pruningBranch, "received", true, FILL_OK, DISPLAY_COLS_DONE);
+      writeBlock(`2. Dead tree／wilted／wilting／dieback + Non-TPC — ${p.diebackNontpc.length}`, p.diebackNontpc, "received", true, FILL_DELAYED, DISPLAY_COLS_CLASS);
+      writeBlock(`3. Tree removal 應為 TPC（異常／待標 TPC）— ${p.removalNeedTpc.length}`, p.removalNeedTpc, "received", true, FILL_DEAD, DISPLAY_COLS_DONE);
+      writeBlock(`3b. Tree removal／TPC — ${p.removalTpc.length}`, p.removalTpc, "received", true, FILL_WARN2, DISPLAY_COLS_CLASS);
+      writeBlock(`4. Non-TPC／TPC — ${p.nontpcTpc.length}`, p.nontpcTpc, "received", true, FILL_CLASS, DISPLAY_COLS_CLASS);
+      writeBlock(`異常：Dead tree-like 但 Mitigation 未標 Non-TPC／TPC／removal — ${p.deadAnom.length}`, p.deadAnom, "received", true, FILL_OVERDUE, DISPLAY_COLS_ANOM);
+      writeBlock(`延後 — ${p.delayed.length}`, p.delayed, "received", true, FILL_DELAYED, cols);
       const openN = p.risk.filter(r => r[r.length - 2] === "未跟進").length;
-      writeBlock(`5. 高風險未跟進 ${openN} / 共 ${p.risk.length}`, p.risk.filter(r => r[r.length - 2] === "未跟進").map(r => r.slice(0, 8)), "received", true, FILL_RISK);
+      writeBlock(`高風險未跟進 ${openN} / 共 ${p.risk.length}`, p.risk.filter(r => r[r.length - 2] === "未跟進").map(r => r.slice(0, 8)), "received", true, FILL_RISK, cols);
 
       summarySheets.push({ name: `Summary_${region}`.slice(0, 31), aoa });
 
