@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-HK">
 <head>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <title>Referral Cases 對比</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -65,7 +68,7 @@ details.block summary{cursor:pointer;font-weight:700;font-size:13px;color:#0f172
 </head>
 <body>
 <header>
-  <h1>Referral Cases 對比</h1>
+  <h1>Referral Cases 對比 <span id="buildVer" style="font-size:12px;font-weight:600;opacity:.85;margin-left:8px">build 20261104e</span></h1>
   <p>對比兩份 Housing Referral Excel（Case No. + Tree ID）。資料只在瀏覽器處理，不會上傳。</p>
 </header>
 <div class="wrap">
@@ -917,25 +920,37 @@ details.block summary{cursor:pointer;font-weight:700;font-size:13px;color:#0f172
     }
 
     const stamp = (() => {
-      // Always Asia/Hong_Kong → Diff_YYYYMMDD_HHMM (e.g. Diff_20261104_1859.xlsx)
-      const parts = Object.fromEntries(
-        new Intl.DateTimeFormat("en-GB", {
-          timeZone: "Asia/Hong_Kong",
-          year: "numeric", month: "2-digit", day: "2-digit",
-          hour: "2-digit", minute: "2-digit", hour12: false,
-        }).formatToParts(new Date()).filter(x => x.type !== "literal").map(x => [x.type, x.value])
-      );
-      return `${parts.year}${parts.month}${parts.day}_${parts.hour}${parts.minute}`;
+      // Diff_YYYYMMDD_HHMM in Asia/Hong_Kong, e.g. Diff_20261104_1859.xlsx
+      const s = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Hong_Kong" });
+      const m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+      if (!m) {
+        const d = new Date();
+        const p2 = n => String(n).padStart(2, "0");
+        return `${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}`;
+      }
+      return `${m[1]}${m[2]}${m[3]}_${m[4]}${m[5]}`;
     })();
     const filename = `Diff_${stamp}.xlsx`;
-    const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    const blob = new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+    try {
+      // Prefer SheetJS writeFile (sets download name reliably)
+      XLSX.writeFile(wb, filename, { bookType: "xlsx" });
+    } catch (e) {
+      const raw = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([new Uint8Array(raw)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+    }
+    if (statusEl) {
+      const note = document.createElement("div");
+      note.className = "okmsg";
+      note.textContent = "已下載：" + filename;
+      statusEl.appendChild(note);
+    }
   }
 
   btnCompare.onclick = runCompare;
