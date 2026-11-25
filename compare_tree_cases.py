@@ -117,13 +117,10 @@ def is_incomplete(rec):
     return rec.get("Works Completion Date") is None
 
 def is_overdue_incomplete(rec, as_of=None):
-    """收案已過 16 日且檢查當日無 Works Completion Date → 未完成。"""
-    if not is_incomplete(rec) or deadline_is_one_day_from_received(rec):
-        return False
-    received = rec.get("Date Received")
-    if not isinstance(received, date):
-        return False
-    return ((as_of or date.today()) - received).days >= 16
+    if not is_incomplete(rec) or deadline_is_one_day_from_received(rec): return False
+    d=rec.get("Case deadline")
+    if not isinstance(d, date): return False
+    return d <= (as_of or date.today())
 
 def risk_hits(rec):
     obs = norm_text(rec.get("Observation")) or ""
@@ -135,81 +132,28 @@ def follow_up_status(rec):
     acted = any(w in mit for w in ("removal","remove","fell","felling","tpc","pruning","prune","done"))
     return "已跟進" if done or acted else "未跟進"
 
-def completion_status(rec):
-    return "已完成" if rec.get("Works Completion Date") is not None else "未完成"
-
-def obs_n(rec):
-    return norm_text(rec.get("Observation")) or ""
-
-def mit_n(rec):
-    return norm_text(rec.get("Mitigation")) or ""
-
-def is_dead_branch_obs(rec):
-    """dead branch / broken branch / hanger 等（norm 後 branches→branch）。"""
-    obs = obs_n(rec)
-    if "dead branch" in obs or "broken branch" in obs:
-        return True
-    if "dead and broken" in obs and "branch" in obs:
-        return True
-    if "hanger" in obs and ("dead" in obs or "broken" in obs or "branch" in obs):
-        return True
-    return False
-
-def is_pruning_mit(rec):
-    mit = mit_n(rec)
-    return "pruning" in mit or "prune" in mit
-
-def is_dead_tree_like_obs(rec):
-    """dead tree / wilted / wilting / dieback / die back / abnormal defoliation。"""
-    obs = obs_n(rec)
-    keys = (
-        "dead tree", "wilted", "wilting", "dieback", "die back",
-        "abnormal defoliation", "wilted crown", "wilting crown",
-    )
-    return any(k in obs for k in keys)
-
-def is_non_tpc_mit(rec):
-    mit = mit_n(rec)
-    # norm_text 會把 non-tpc → non tpc；亦容許 nontpc
-    return "non tpc" in mit or "nontpc" in mit
-
-def is_tpc_mit(rec):
-    """純 TPC（唔計 Non-TPC）。"""
-    mit = mit_n(rec)
-    if not mit or is_non_tpc_mit(rec):
-        return False
-    return bool(re.search(r"\btpc\b", mit))
-
-def is_tree_removal_mit(rec):
-    mit = mit_n(rec)
-    return any(w in mit for w in ("tree removal", "removal", "remove", "fell", "felling"))
-
-def is_no_mitigation_required(rec):
-    """Mitigation 含 no mitigation required（hyphen/space 已由 norm_text 正規化）。"""
-    return "no mitigation required" in mit_n(rec)
-
-def is_dead_tree_anomaly(rec):
-    """Dead-tree-like 但 Mitigation 空白，又或者唔係 Non-TPC／TPC／tree removal。"""
-    if not is_dead_tree_like_obs(rec):
-        return False
-    if is_non_tpc_mit(rec) or is_tpc_mit(rec) or is_tree_removal_mit(rec):
-        return False
-    return True
+def is_dead_tree_not_removal(rec):
+    obs=norm_text(rec.get("Observation")) or ""
+    mit=norm_text(rec.get("Mitigation")) or ""
+    if "dead tree" not in obs: return False
+    return not any(w in mit for w in ("removal","remove","fell","felling","tpc","non tpc","nontpc"))
 
 def is_delayed_remark(rec):
     raw=str(rec.get("Remarks") or "").lower()
     return any(k in raw for k in ("liaised with emo","traffic obstruction","attempt to carry out work","延後"))
 
-def display_row_extra(rec, key=None, extra=None):
-    row = display_row(rec, key)
-    if extra:
-        row = list(row) + list(extra)
-    return row
+def norm_case(case_no):
+    """Ignore content after ( for matching."""
+    if case_no is None: return ""
+    s = str(case_no).strip()
+    if "(" in s:
+        s = s.split("(", 1)[0].strip()
+    return s
 
 def make_key(case_no, tree_id):
-    c=str(case_no).strip() if case_no is not None else ""
-    t=str(tree_id).strip() if tree_id is not None else ""
-    return (c,t)
+    c = norm_case(case_no)
+    t = str(tree_id).strip() if tree_id is not None else ""
+    return (c, t)
 
 def display_row(rec, key=None):
     return [rec.get("Source of Referral"), rec.get("Estate"), key[0] if key else rec.get("Case No."),
@@ -305,29 +249,16 @@ def safe_name(s):
     if s[0].isdigit(): s="N"+s
     return s
 
-def should_skip_sheet(name):
-    """Skip M KC / M WTT / Crystal Used maintenance sheets."""
-    s = str(name or "").strip()
-    if re.match(r"^M\s", s, re.I):
-        return True
-    if re.search(r"crystal", s, re.I):
-        return True
-    return False
-
 def load_all(wb, date_from, date_to):
     """Load every sheet that has Case No. + Tree ID. Return {region: records}."""
     out={}
     for name in wb.sheetnames:
-        if should_skip_sheet(name):
-            continue
         recs=load_sheet(wb[name], date_from, date_to)
         if not recs: continue
         # Summary sheet: split by Region column if present
         if name=="Summary":
             for k,r in recs.items():
                 reg=(r.get("Region") or "Summary")
-                if should_skip_sheet(reg):
-                    continue
                 out.setdefault(str(reg), {})[k]=r
         else:
             out[name]=recs
@@ -367,9 +298,7 @@ def run_compare(a_path, b_path, output_path, name_a="A", name_b="B", date_from=N
         for key in d["only_b"]:
             if key[0] and key[0] not in all_a and key[0] not in seen:
                 seen.add(key[0]); new.append(display_row(b_recs[key], key))
-        overdue, no_mit_req, removal_need_tpc, nontpc_tpc, dead_anom, delayed, risk = (
-            [], [], [], [], [], [], []
-        )
+        overdue, dead, delayed, risk = [], [], [], []
         combined=list(b_recs.items())+[(k, a_recs[k]) for k in d["only_a"]]
         for key, rec in combined:
             hits = risk_hits(rec)
@@ -377,25 +306,10 @@ def run_compare(a_path, b_path, output_path, name_a="A", name_b="B", date_from=N
                 risk.append(display_row(rec, key)+[", ".join(hits), follow_up_status(rec), rec.get("Works Completion Date")])
             if deadline_is_one_day_from_received(rec): continue
             row=display_row(rec, key)
-            if is_overdue_incomplete(rec, as_of):
-                overdue.append(row)
-            if is_no_mitigation_required(rec):
-                no_mit_req.append(row + [completion_status(rec), rec.get("Works Completion Date")])
-            if is_tree_removal_mit(rec) and not is_tpc_mit(rec) and not is_non_tpc_mit(rec):
-                removal_need_tpc.append(row + [completion_status(rec), rec.get("Works Completion Date")])
-            if is_non_tpc_mit(rec):
-                nontpc_tpc.append(row + ["Non-TPC", completion_status(rec), rec.get("Works Completion Date")])
-            elif is_tpc_mit(rec):
-                nontpc_tpc.append(row + ["TPC", completion_status(rec), rec.get("Works Completion Date")])
-            if is_dead_tree_anomaly(rec):
-                dead_anom.append(row + [completion_status(rec), rec.get("Mitigation")])
-            if is_delayed_remark(rec):
-                delayed.append(row)
-        per[region]=dict(
-            new=new, overdue=overdue, no_mit_req=no_mit_req,
-            removal_need_tpc=removal_need_tpc, nontpc_tpc=nontpc_tpc,
-            dead_anom=dead_anom, delayed=delayed, risk=risk,
-        )
+            if is_overdue_incomplete(rec, as_of): overdue.append(row)
+            if is_dead_tree_not_removal(rec): dead.append(row)
+            if is_delayed_remark(rec): delayed.append(row)
+        per[region]=dict(new=new, overdue=overdue, dead=dead, delayed=delayed, risk=risk)
         for label, keys, recs in ((f"{region}_Only_{na}", d["only_a"], a_recs),(f"{region}_Only_{nb}", d["only_b"], b_recs)):
             if not keys: continue
             ws=out.create_sheet(label[:31])
@@ -416,12 +330,7 @@ def run_compare(a_path, b_path, output_path, name_a="A", name_b="B", date_from=N
                     for cell in ws[ws.max_row]: cell.fill=yellow
             auto_width(ws)
     cols=["Source of Referral","Estate","Case No.","Date Received","Tree ID","Observation","Mitigation","Case deadline"]
-    cols_done=cols+["有冇完成","Works Completion Date"]
-    cols_class=cols+["類別","有冇完成","Works Completion Date"]
-    cols_anom=cols+["有冇完成","Mitigation 原文"]
-    fills=[PatternFill("solid", fgColor=c) for c in (
-        "E2EFDA","FCE4D6","C6EFCE","DDEBF7","F8CBAD","FFF2CC","E2F0D9","FCE4D6","F4B183"
-    )]
+    fills=[PatternFill("solid", fgColor=c) for c in ("E2EFDA","FCE4D6","F8CBAD","DDEBF7")]
     first=True
     scope=f"{date_from or '不限'} 至 {date_to or '不限'}" if (date_from or date_to) else "全部日期"
     for region in regions:
@@ -433,15 +342,12 @@ def run_compare(a_path, b_path, output_path, name_a="A", name_b="B", date_from=N
         ws.append([f"範圍: {scope}   逾期以 {as_of or date.today()} 計"])
         ws.append([])
         rn=safe_name(region)
-        write_block(ws, f"新 Case（{name_b} 有、{name_a} 沒有）— {len(d['new'])}", d["new"], cols, fills[0], f"{rn}_{nb}New", newest_first=True)
-        write_block(ws, f"0. Case deadline：收案已過 16 日且無 Works Completion Date（未完成）— {len(d['overdue'])}", d["overdue"], cols, fills[1], f"{rn}Overdue", sort_by="received", newest_first=False)
-        write_block(ws, f"No mitigation required — {len(d['no_mit_req'])}", d["no_mit_req"], cols_done, fills[2], f"{rn}NoMit")
-        write_block(ws, f"3. Tree removal 應為 TPC（異常／待標 TPC）— {len(d['removal_need_tpc'])}", d["removal_need_tpc"], cols_done, fills[4], f"{rn}RemNeed")
-        write_block(ws, f"4. Non-TPC／TPC — {len(d['nontpc_tpc'])}", d["nontpc_tpc"], cols_class, fills[6], f"{rn}TpcClass")
-        write_block(ws, f"異常：Dead tree-like 但 Mitigation 未標 Non-TPC／TPC／removal — {len(d['dead_anom'])}", d["dead_anom"], cols_anom, fills[7], f"{rn}DeadAnom")
-        write_block(ws, f"延後 — {len(d['delayed'])}", d["delayed"], cols, fills[3], f"{rn}Delayed")
+        write_block(ws, f"1. {name_b} 有、{name_a} 沒有的 Case No. — {len(d['new'])}", d["new"], cols, fills[0], f"{rn}_{nb}New", newest_first=True)
+        write_block(ws, f"2. 已過 Case deadline 且未完成 — {len(d['overdue'])}", d["overdue"], cols, fills[1], f"{rn}Overdue", sort_by="deadline", newest_first=False)
+        write_block(ws, f"3. Dead tree 但 Mitigation 不是 removal/fell/TPC/Non-TPC — {len(d['dead'])}", d["dead"], cols, fills[2], f"{rn}Dead")
+        write_block(ws, f"4. 延後 — {len(d['delayed'])}", d["delayed"], cols, fills[3], f"{rn}Delayed")
         open_n=sum(1 for r in d["risk"] if r[-2]=="未跟進")
-        write_block(ws, f"高風險未跟進 {open_n} / 共 {len(d['risk'])}", [r[:8] for r in d["risk"] if r[-2]=="未跟進"], cols, PatternFill("solid", fgColor="F4B183"), f"{rn}RiskOpen")
+        write_block(ws, f"5. 高風險未跟進 {open_n} / 共 {len(d['risk'])}", [r[:8] for r in d["risk"] if r[-2]=="未跟進"], cols, PatternFill("solid", fgColor="F4B183"), f"{rn}RiskOpen")
         auto_width(ws)
         if d["risk"]:
             ws2=out.create_sheet(f"{region}_Risk")
